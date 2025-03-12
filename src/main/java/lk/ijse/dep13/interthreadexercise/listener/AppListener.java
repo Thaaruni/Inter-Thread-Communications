@@ -11,7 +11,11 @@ public class AppListener implements ServletContainerInitializer {
 
     @Override
     public void onStartup(Set<Class<?>> set, ServletContext servletContext) throws ServletException {
-        NurseryCP NurseryCP = new NurseryCP();
-        servletContext.setAttribute("datasource", NurseryCP);
+        NurseryCP connectionPool = new NurseryCP();
+        servletContext.setAttribute("datasource", connectionPool);
     }
 }
+
+
+
+

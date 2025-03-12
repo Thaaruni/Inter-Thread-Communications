@@ -8,30 +8,21 @@ import java.util.HashMap;
 import java.util.Properties;
 
 public class NurseryCP {
-    private static final int DEFAULT_POOL_SIZE = 4;
+    private int poolSize;
 
     private final HashMap<Integer, Connection> MAIN_POOL = new HashMap<>();
     private final HashMap<Integer, Connection> CONSUMER_POOL = new HashMap<>();
-    private int poolSize;
 
     public NurseryCP() {
-        this(DEFAULT_POOL_SIZE);
-    }
-
-    public NurseryCP(int poolSize) {
-        this.poolSize = poolSize;
         try {
-            initializePool();
+            initializePoolFromProperties();
         } catch (IOException | SQLException | ClassNotFoundException e) {
             throw new RuntimeException(e);
         }
     }
 
-    public synchronized int getPoolSize() {
-        return poolSize;
-    }
+    private void initializePoolFromProperties() throws IOException, SQLException, ClassNotFoundException {
 
-    private void initializePool() throws IOException, SQLException, ClassNotFoundException {
         Properties properties = new Properties();
         properties.load(getClass().getResourceAsStream("/application.properties"));
 
@@ -41,13 +32,26 @@ public class NurseryCP {
         String user = properties.getProperty("app.db.user");
         String password = properties.getProperty("app.db.password");
 
+
+        try {
+            poolSize = Integer.parseInt(properties.getProperty("app.db.pool.size", "4"));
+        } catch (NumberFormatException e) {
+            poolSize = 4;
+        }
+
+
         Class.forName("com.mysql.cj.jdbc.Driver");
 
+
         for (int i = 0; i < poolSize; i++) {
-            Connection connection = DriverManager.getConnection("jdbc:mysql://%s:%s/%s"
-                    .formatted(host, port, database), user, password);
+            Connection connection = DriverManager.getConnection(
+                    "jdbc:mysql://%s:%s/%s".formatted(host, port, database), user, password);
             MAIN_POOL.put((i + 1) * 10, connection);
         }
+    }
+
+    public synchronized int getPoolSize() {
+        return poolSize;
     }
 
     public synchronized ConnectionWrapper getConnection() {
@@ -79,18 +83,27 @@ public class NurseryCP {
         notifyAll();
     }
 
-
     public synchronized void resizePool(int newSize) throws SQLException, IOException, ClassNotFoundException {
         if (newSize <= 0) throw new IllegalArgumentException("Pool size must be greater than 0");
 
+        // Expand the pool
         if (newSize > poolSize) {
-            // Expand pool
+            Properties properties = new Properties();
+            properties.load(getClass().getResourceAsStream("/application.properties"));
+            String host = properties.getProperty("app.db.host");
+            String port = properties.getProperty("app.db.port");
+            String database = properties.getProperty("app.db.database");
+            String user = properties.getProperty("app.db.user");
+            String password = properties.getProperty("app.db.password");
+
             for (int i = poolSize; i < newSize; i++) {
-                Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/demo", "root", "password");
+                Connection connection = DriverManager.getConnection(
+                        "jdbc:mysql://%s:%s/%s".formatted(host, port, database), user, password);
                 MAIN_POOL.put((i + 1) * 10, connection);
             }
+
+            // Shrink the pool
         } else if (newSize < poolSize) {
-            // Shrink pool
             int difference = poolSize - newSize;
             for (int i = 0; i < difference; i++) {
                 Integer key = MAIN_POOL.keySet().stream().findFirst().orElse(null);
@@ -107,3 +120,5 @@ public class NurseryCP {
     public record ConnectionWrapper(Integer id, Connection connection) {
     }
 }
+
+
